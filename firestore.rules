@@ -1,0 +1,107 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions for role checking
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserId() {
+      return request.auth.uid;
+    }
+    
+    function isApprovedCoach(teamId) {
+      return exists(/databases/$(database)/documents/teams/$(teamId)/members/$(getUserId())) &&
+             get(/databases/$(database)/documents/teams/$(teamId)/members/$(getUserId())).data.role == "Coach" &&
+             get(/databases/$(database)/documents/teams/$(teamId)/members/$(getUserId())).data.status == "approved";
+    }
+    
+    function isTeamOwner(teamId) {
+      return exists(/databases/$(database)/documents/teams/$(teamId)/members/$(getUserId())) &&
+             get(/databases/$(database)/documents/teams/$(teamId)/members/$(getUserId())).data.isOwner == true &&
+             get(/databases/$(database)/documents/teams/$(teamId)/members/$(getUserId())).data.status == "approved";
+    }
+    
+    function isApprovedTeamMember(teamId) {
+      return exists(/databases/$(database)/documents/teams/$(teamId)/members/$(getUserId())) &&
+             get(/databases/$(database)/documents/teams/$(teamId)/members/$(getUserId())).data.status == "approved";
+    }
+    
+    function isCoachOrOwner(teamId) {
+      return isApprovedCoach(teamId) || isTeamOwner(teamId);
+    }
+
+    // Users collection - users can read/write their own profile
+    match /users/{userId} {
+      allow read, write: if isAuthenticated() && getUserId() == userId;
+    }
+
+    // Teams collection
+    match /teams/{teamId} {
+      // Anyone authenticated can read team info (for joining)
+      allow read: if isAuthenticated();
+      // Only authenticated users can create teams
+      allow create: if isAuthenticated();
+      // Only team owner can update/delete team
+      allow update, delete: if isAuthenticated() && isTeamOwner(teamId);
+      
+      // Team members subcollection
+      match /members/{memberId} {
+        // Team members can read all members
+        allow read: if isAuthenticated() && isApprovedTeamMember(teamId);
+        // Only approved coaches or team owners can write to members
+        allow write: if isAuthenticated() && isCoachOrOwner(teamId);
+        // Users can create their own membership (for joining)
+        allow create: if isAuthenticated() && getUserId() == memberId;
+      }
+      
+      // Programs subcollection - only coaches can write
+      match /programs/{programId} {
+        // Team members can read programs
+        allow read: if isAuthenticated() && isApprovedTeamMember(teamId);
+        // Only approved coaches can write programs
+        allow write: if isAuthenticated() && isApprovedCoach(teamId);
+      }
+      
+      // Training logs subcollection - only coaches can write
+      match /trainingLogs/{logId} {
+        // Team members can read training logs
+        allow read: if isAuthenticated() && isApprovedTeamMember(teamId);
+        // Only approved coaches can write training logs
+        allow write: if isAuthenticated() && isApprovedCoach(teamId);
+      }
+      
+      // Reminders subcollection
+      match /reminders/{reminderId} {
+        // Team members can read reminders
+        allow read: if isAuthenticated() && isApprovedTeamMember(teamId);
+        // Only approved coaches can write reminders
+        allow write: if isAuthenticated() && isApprovedCoach(teamId);
+      }
+    }
+
+    // Leaderboards collection
+    match /leaderboards/{leaderboardId} {
+      // Only team members can read leaderboards
+      allow read: if isAuthenticated() && 
+                     exists(/databases/$(database)/documents/teams/$(resource.data.team_id)/members/$(getUserId())) &&
+                     get(/databases/$(database)/documents/teams/$(resource.data.team_id)/members/$(getUserId())).data.status == "approved";
+      // Only approved coaches can write leaderboards
+      allow write: if isAuthenticated() && 
+                      exists(/databases/$(database)/documents/teams/$(resource.data.team_id)/members/$(getUserId())) &&
+                      get(/databases/$(database)/documents/teams/$(resource.data.team_id)/members/$(getUserId())).data.role == "Coach" &&
+                      get(/databases/$(database)/documents/teams/$(resource.data.team_id)/members/$(getUserId())).data.status == "approved";
+    }
+
+    // Security logs - only system can write, users can read their own
+    match /security_logs/{logId} {
+      allow read: if isAuthenticated() && getUserId() == resource.data.userId;
+      allow write: if false; // Only server-side functions should write security logs
+    }
+
+    // Deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
