@@ -32,7 +32,7 @@ class _CreateProgramPageState extends State<CreateProgramPage> {
       // Mengisi form dengan data yang ada jika mode edit
       // Program model baru tidak punya description, gunakan template atau kosongkan
       _selectedCategories = List.from(widget.programToEdit!.categories);
-      _selectedDate = widget.programToEdit!.weekAnchor;
+      _selectedDate = widget.programToEdit!.weekAnchor.toDate();
     }
   }
 

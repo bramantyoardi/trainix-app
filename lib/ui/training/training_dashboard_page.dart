@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../providers/team_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/program_provider.dart';
@@ -296,6 +297,7 @@ class TrainingDashboardPage extends StatelessWidget {
             builder: (context) => TrainingLogInputPage(
               program: programProvider.programs.first,
               teamId: team.id,
+              programId: programProvider.programs.first.id,
             ),
           ),
         );
@@ -305,7 +307,7 @@ class TrainingDashboardPage extends StatelessWidget {
           id: 'default_${team.id}',
           name: 'Program Training ${team.name}',
           teamId: team.id,
-          weekAnchor: DateTime.now(),
+          weekAnchor: Timestamp.now(),
           template: {},
           categories: ['General'],
           targetDays: 6,
@@ -318,6 +320,7 @@ class TrainingDashboardPage extends StatelessWidget {
             builder: (context) => TrainingLogInputPage(
               program: defaultProgram,
               teamId: team.id,
+              programId: defaultProgram.id,
             ),
           ),
         );

@@ -10,16 +10,16 @@ class CreateReminderPage extends StatefulWidget {
   final String teamName;
   final bool isCoach;
   final String userId;
-  final Reminder? reminderToEdit; // Null jika membuat baru, berisi data jika mengedit
+  final Reminder? reminderToEdit;
 
   const CreateReminderPage({
-    Key? key,
+    super.key,
     required this.teamId,
     required this.teamName,
     required this.isCoach,
     required this.userId,
     this.reminderToEdit,
-  }) : super(key: key);
+  });
 
   @override
   _CreateReminderPageState createState() => _CreateReminderPageState();
@@ -59,7 +59,7 @@ class _CreateReminderPageState extends State<CreateReminderPage> {
       // Mengisi form dengan data yang ada jika mode edit
       _titleController.text = widget.reminderToEdit!.title;
       _descriptionController.text = widget.reminderToEdit!.description;
-      _selectedDate = widget.reminderToEdit!.targetDate ?? DateTime.now().add(const Duration(days: 1));
+      _selectedDate = widget.reminderToEdit!.targetDate?.toDate() ?? DateTime.now().add(const Duration(days: 1));
       _selectedAthleteId = widget.reminderToEdit!.athleteId;
     } else if (!widget.isCoach) {
       // Jika user adalah atlet, set athleteId ke userId mereka
@@ -132,26 +132,14 @@ class _CreateReminderPageState extends State<CreateReminderPage> {
           ? _descriptionController.text
           : '${_descriptionController.text}\n\nTim: ${widget.teamName}';
 
-      final reminder = Reminder(
-        id: widget.reminderToEdit?.id ?? '',
-        title: titleWithTeam,
-        description: descriptionWithTeam,
-        dateTime: _selectedDate,
-        teamId: widget.teamId,
-        createdBy: currentUser.uid,
-        athleteId: widget.isCoach ? _selectedAthleteId : currentUser.uid,
-        targetDate: _selectedDate,
-        status: 'pending',
-      );
-
       final reminderProvider = Provider.of<ReminderProvider>(context, listen: false);
       
       bool success = false;
       if (widget.reminderToEdit != null) {
-        // Update existing reminder - use named parameters with Map data
+        // Update existing reminder
         success = await reminderProvider.updateReminder(
-          reminderId: reminder.id, 
-          data: {
+          widget.reminderToEdit!.id,
+          {
             'title': titleWithTeam,
             'description': descriptionWithTeam,
             'scheduledAt': asTimestamp(_selectedDate),
@@ -162,7 +150,7 @@ class _CreateReminderPageState extends State<CreateReminderPage> {
           }
         );
       } else {
-        // Create new reminder with Map data
+        // Create new reminder
         success = await reminderProvider.createReminder({
           'title': titleWithTeam,
           'description': descriptionWithTeam,
@@ -227,7 +215,7 @@ class _CreateReminderPageState extends State<CreateReminderPage> {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          isEditing ? 'Edit Reminder' : 'Buat Reminder',
+          isEditing ? 'Edit Pengingat' : 'Buat Pengingat',
           style: const TextStyle(
             color: Colors.white,
             fontSize: 20,
@@ -490,32 +478,3 @@ class _CreateReminderPageState extends State<CreateReminderPage> {
     );
   }
 }
-
-  DateTime? _scheduledAt;
-
-  void _onDatePicked(dynamic v) {
-    setState(() => _scheduledAt = asDateTime(v));
-  }
-
-  // saat CREATE
-  Future<void> _handleCreate(String title, String note) async {
-    final ok = await context.read<ReminderProvider>().createReminder({
-      'title': title,
-      'note': note,
-      'scheduledAt': asTimestamp(_scheduledAt),
-    });
-    if (ok && mounted) Navigator.pop(context, true);
-  }
-
-  // saat UPDATE
-  Future<void> _handleUpdate(String reminderId, String title, String note) async {
-    final ok = await context.read<ReminderProvider>().updateReminder(
-      reminderId,
-      {
-        'title': title,
-        'note': note,
-        'scheduledAt': asTimestamp(_scheduledAt),
-      },
-    );
-    if (ok && mounted) Navigator.pop(context, true);
-  }

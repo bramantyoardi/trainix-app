@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/error_handler.dart';
 import 'email_verification_page.dart';
+import 'sign_in_page.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({Key? key}) : super(key: key);
@@ -163,7 +164,14 @@ class _RegisterPageState extends State<RegisterPage> {
                                 borderRadius: BorderRadius.circular(12), // Ubah dari 26 ke 12 untuk samakan dengan login_page
                               ),
                               child: TextButton(
-                                onPressed: () {}, // Already on register page
+                                onPressed: () {
+                                  Navigator.pushReplacement(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => const SignInPage(),
+                                    ),
+                                  );
+                                },
                                 style: TextButton.styleFrom(
                                   padding: EdgeInsets.zero,
                                   shape: RoundedRectangleBorder(
@@ -529,8 +537,8 @@ class _RegisterPageState extends State<RegisterPage> {
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-      // Use named arguments for register method
-      final success = await authProvider.register(
+      // Use signUpWithEmailPassword instead of register
+      final success = await authProvider.signUpWithEmailPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
         name: _nameController.text.trim(),
@@ -542,7 +550,10 @@ class _RegisterPageState extends State<RegisterPage> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => const EmailVerificationPage(),
+            builder: (context) => EmailVerificationPage(
+              email: _emailController.text.trim(),
+              name: _nameController.text.trim(),
+            ),
           ),
         );
       } else {

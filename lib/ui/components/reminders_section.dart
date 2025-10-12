@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/reminder.dart';
 import '../../providers/reminder_provider.dart';
-import '../../providers/auth_provider.dart';
 import '../training/reminder_list_page.dart';
 
 class RemindersSection extends StatefulWidget {
@@ -220,7 +219,7 @@ class _RemindersSectionState extends State<RemindersSection> {
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  _formatDate(reminder.targetDate ?? reminder.dateTime),
+                  _formatDate(reminder.targetDate?.toDate() ?? reminder.dateTime.toDate()),
                   style: const TextStyle(
                     color: Color(0xFF65EAE8),
                     fontSize: 12,
@@ -291,7 +290,7 @@ class _RemindersSectionState extends State<RemindersSection> {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    _formatDate(reminder.targetDate ?? reminder.dateTime),
+                    _formatDate(reminder.targetDate?.toDate() ?? reminder.dateTime.toDate()),
                     style: const TextStyle(
                       color: Color(0xFF65EAE8),
                       fontSize: 12,
@@ -358,17 +357,17 @@ class _RemindersSectionState extends State<RemindersSection> {
   String _formatDate(DateTime date) {
     final now = DateTime.now();
     final difference = date.difference(now).inDays;
-
+    
     if (difference == 0) {
-      return 'Today';
+      return 'Hari ini';
     } else if (difference == 1) {
-      return 'Tomorrow';
+      return 'Besok';
     } else if (difference == -1) {
-      return 'Yesterday';
+      return 'Kemarin';
     } else if (difference > 1) {
-      return 'In $difference days';
+      return '${difference} hari lagi';
     } else {
-      return '${difference.abs()} days ago';
+      return '${difference.abs()} hari yang lalu';
     }
   }
 }

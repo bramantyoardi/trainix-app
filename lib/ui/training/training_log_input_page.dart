@@ -10,11 +10,13 @@ import '../../utils/hrr_calculator.dart';
 class TrainingLogInputPage extends StatefulWidget {
   final String teamId;
   final Program program;
+  final String programId;
 
   const TrainingLogInputPage({
     Key? key,
     required this.teamId,
     required this.program,
+    required this.programId,
   }) : super(key: key);
 
   @override

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/program.dart'; // Update import ke model Program yang baru
 import 'create_program_page.dart';
 import 'intensity_input_page.dart';
@@ -293,6 +294,7 @@ class _ProgramDetailPageState extends State<ProgramDetailPage> {
                   builder: (context) => TrainingLogInputPage(
                     program: widget.program,
                     teamId: widget.teamId,
+                    programId: widget.program.id,
                   ),
                 ),
               );
@@ -350,13 +352,15 @@ class _ProgramDetailPageState extends State<ProgramDetailPage> {
     );
   }
 
-  int _getWeekNumber(DateTime date) {
+  int _getWeekNumber(Timestamp timestamp) {
+    final date = timestamp.toDate();
     final startOfYear = DateTime(date.year, 1, 1);
     final daysSinceStart = date.difference(startOfYear).inDays;
     return (daysSinceStart / 7).ceil();
   }
 
-  String _formatDate(DateTime date) {
+  String _formatDate(Timestamp timestamp) {
+    final date = timestamp.toDate();
     final months = [
       'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
       'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'

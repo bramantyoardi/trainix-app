@@ -37,4 +37,20 @@ class ProgramProvider extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  Future<void> loadTeamPrograms(String teamId) async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      _programService.getTeamPrograms(teamId).listen((items) {
+        _programs = items;
+        _isLoading = false;
+        notifyListeners();
+      });
+    } catch (e) {
+      _isLoading = false;
+      notifyListeners();
+      print('Error loading team programs: $e');
+    }
+  }
 }

@@ -11,6 +11,7 @@ class AuthProvider with ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
   final UserService _userService = UserService(FirestoreService());
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   User? _user;
   UserProfile? _userProfile;
@@ -49,7 +50,6 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  // Add this method to refresh user profile
   Future<void> refreshUserProfile() async {
     if (_user != null) {
       _userProfile = await _userService.getUserProfile(_user!.uid);
@@ -57,16 +57,62 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  // Enhanced email validation
   bool _isValidEmail(String email) {
     return RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email);
   }
 
-  // Enhanced password validation
   bool _isValidPassword(String password) {
-    // At least 8 characters, 1 uppercase, 1 lowercase, 1 number
     return password.length >= 8 &&
            RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)').hasMatch(password);
+  }
+
+  String? _validateEmail(String email) {
+    if (email.isEmpty) {
+      return 'Email tidak boleh kosong';
+    }
+    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+    if (!emailRegex.hasMatch(email)) {
+      return 'Format email tidak valid';
+    }
+    return null;
+  }
+
+  String? _validatePassword(String password) {
+    if (password.isEmpty) {
+      return 'Password tidak boleh kosong';
+    }
+    if (password.length < 6) {
+      return 'Password minimal 6 karakter';
+    }
+    if (password.contains(' ')) {
+      return 'Password tidak boleh mengandung spasi';
+    }
+    return null;
+  }
+
+  String _getEnhancedErrorMessage(String code) {
+    switch (code) {
+      case 'invalid-email':
+        return 'Format email tidak valid';
+      case 'user-disabled':
+        return 'Akun ini telah dinonaktifkan';
+      case 'user-not-found':
+        return 'Email tidak terdaftar';
+      case 'wrong-password':
+        return 'Password salah';
+      case 'email-already-in-use':
+        return 'Email sudah digunakan';
+      case 'operation-not-allowed':
+        return 'Operasi tidak diizinkan';
+      case 'weak-password':
+        return 'Password terlalu lemah';
+      case 'network-request-failed':
+        return 'Koneksi internet bermasalah';
+      case 'too-many-requests':
+        return 'Terlalu banyak percobaan, coba lagi nanti';
+      default:
+        return 'Terjadi kesalahan: $code';
+    }
   }
 
   Future<bool> signInWithEmailPassword(String email, String password) async {
@@ -75,7 +121,6 @@ class AuthProvider with ChangeNotifier {
       _errorMessage = null;
       notifyListeners();
 
-      // Enhanced validation
       if (!_isValidEmail(email)) {
         _errorMessage = 'Format email tidak valid';
         return false;
@@ -122,7 +167,6 @@ class AuthProvider with ChangeNotifier {
       _errorMessage = null;
       notifyListeners();
 
-      // Enhanced validation
       if (!_isValidEmail(email)) {
         _errorMessage = 'Format email tidak valid';
         return false;
@@ -144,15 +188,13 @@ class AuthProvider with ChangeNotifier {
       );
 
       if (result.user != null) {
-        // Send email verification
         await result.user!.sendEmailVerification();
 
-        // Create complete user profile
         UserProfile newProfile = UserProfile(
           uid: result.user!.uid,
           name: name,
           email: email,
-          username: username ?? email.split('@')[0], // Generate username from email if not provided
+          username: username ?? email.split('@')[0],
           gender: gender,
           createdAt: Timestamp.now(),
           isEmailVerified: false,
@@ -179,72 +221,75 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  String _getEnhancedErrorMessage(String errorCode) {
-    switch (errorCode) {
-      case 'user-not-found':
-        return 'Akun dengan email ini tidak ditemukan';
-      case 'wrong-password':
-        return 'Password yang Anda masukkan salah';
-      case 'email-already-in-use':
-        return 'Email ini sudah terdaftar. Silakan gunakan email lain';
-      case 'weak-password':
-        return 'Password terlalu lemah. Gunakan minimal 8 karakter';
-      case 'invalid-email':
-        return 'Format email tidak valid';
-      case 'user-disabled':
-        return 'Akun ini telah dinonaktifkan';
-      case 'too-many-requests':
-        return 'Terlalu banyak percobaan. Coba lagi nanti';
-      case 'network-request-failed':
-        return 'Koneksi internet bermasalah. Periksa koneksi Anda';
-      default:
-        return 'Terjadi kesalahan. Silakan coba lagi';
-    }
-  }
-
   Future<bool> signInWithGoogle() async {
     try {
       _isLoading = true;
       _errorMessage = null;
       notifyListeners();
 
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) return false;
+      // Trigger the authentication flow
+      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
 
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      UserCredential result = await _auth.signInWithCredential(credential);
-      
-      if (result.user != null) {
-        // Check if user profile exists, create if not
-        UserProfile? existingProfile = await _userService.getUserProfile(result.user!.uid);
-        
-        if (existingProfile == null) {
-          UserProfile newProfile = UserProfile(
-            uid: result.user!.uid,
-            name: result.user!.displayName ?? 'Unknown',
-            email: result.user!.email ?? '',
-            createdAt: Timestamp.now(),
-            isEmailVerified: result.user!.emailVerified,
-            profileImageUrl: result.user!.photoURL,
-          );
-          
-          await _userService.updateUserProfile(newProfile);
-        } else {
-          await _userService.updateUserProfile(
-            existingProfile.copyWith(lastLoginAt: Timestamp.now())
-          );
-        }
-        return true;
+      // If user cancels the sign-in process
+      if (googleUser == null) {
+        _errorMessage = 'Login dibatalkan';
+        return false;
       }
-      return false;
+
+      try {
+        // Obtain the auth details from the request
+        final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+
+        // Create a new credential
+        final credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
+
+        // Sign in to Firebase with the Google credential
+        final UserCredential userCredential = await _auth.signInWithCredential(credential);
+        final User? user = userCredential.user;
+
+        if (user != null) {
+          // Check if this is a new user
+          final isNewUser = userCredential.additionalUserInfo?.isNewUser ?? false;
+
+          if (isNewUser) {
+            // Create a new user profile for new Google users
+            final userProfile = UserProfile(
+              uid: user.uid,
+              email: user.email ?? '',
+              name: user.displayName ?? '',
+              username: user.email?.split('@')[0] ?? '',
+              profileImageUrl: user.photoURL ?? '',
+              createdAt: Timestamp.now(),
+              lastLoginAt: Timestamp.now(),
+              isEmailVerified: user.emailVerified,
+            );
+
+            // Save the new user profile to Firestore
+            await _firestore.collection('users').doc(user.uid).set(userProfile.toJson());
+          } else {
+            // Update last login time for existing users
+            await _firestore.collection('users').doc(user.uid).update({
+              'lastLoginAt': Timestamp.now(),
+            });
+          }
+
+          // Load the user profile
+          await _loadUserProfile();
+          return true;
+        }
+        _errorMessage = 'Gagal mendapatkan data pengguna';
+        return false;
+      } catch (e) {
+        print('Error getting auth details: $e');
+        _errorMessage = 'Gagal mendapatkan data autentikasi Google';
+        return false;
+      }
     } catch (e) {
-      _errorMessage = 'Google sign in failed';
-      print('Google sign in error: $e');
+      print('Error during Google sign in: $e');
+      _errorMessage = 'Terjadi kesalahan saat login dengan Google';
       return false;
     } finally {
       _isLoading = false;
@@ -254,53 +299,50 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> signOut() async {
     try {
-      _isLoading = true;
-      notifyListeners();
-      
       await _googleSignIn.signOut();
       await _auth.signOut();
-      
-      // Reset user data
       _user = null;
       _userProfile = null;
-      _errorMessage = null;
-      _isLoading = false;
-      
       notifyListeners();
     } catch (e) {
-      _isLoading = false;
-      _errorMessage = 'Logout failed';
       print('Sign out error: $e');
-      notifyListeners();
     }
   }
 
-  Future<bool> resetPassword(String email) async {
+  Future<bool> sendPasswordResetEmail(String email) async {
     try {
+      _isLoading = true;
+      _errorMessage = null;
+      notifyListeners();
+
+      if (!_isValidEmail(email)) {
+        _errorMessage = 'Format email tidak valid';
+        return false;
+      }
+
       await _auth.sendPasswordResetEmail(email: email);
       return true;
+    } on FirebaseAuthException catch (e) {
+      _errorMessage = _getEnhancedErrorMessage(e.code);
+      print('Password reset error: ${e.message}');
+      return false;
     } catch (e) {
-      _errorMessage = 'Failed to send password reset email';
+      _errorMessage = 'Terjadi kesalahan yang tidak terduga';
       print('Password reset error: $e');
       return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
   }
 
-  void clearError() {
-    _errorMessage = null;
-    notifyListeners();
-  }
-
-  // Add register method wrapper
-  Future<bool> register({
-    required String email,
-    required String password,
-    required String name,
-  }) async {
-    return await signUpWithEmailPassword(
-      email: email,
-      password: password,
-      name: name,
-    );
+  Future<bool> isEmailVerified() async {
+    try {
+      await _auth.currentUser?.reload();
+      return _auth.currentUser?.emailVerified ?? false;
+    } catch (e) {
+      print('Check email verification error: $e');
+      return false;
+    }
   }
 }

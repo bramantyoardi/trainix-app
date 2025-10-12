@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/program.dart';
 import '../../models/training_log.dart';
 import '../../providers/training_log_provider.dart';
@@ -136,7 +137,7 @@ class _TrainingLogListPageState extends State<TrainingLogListPage> {
           return const SizedBox.shrink();
         }
 
-        final logs = provider.trainingLogs;
+        final logs = provider.logs;
         if (logs.isEmpty) {
           return const SizedBox.shrink();
         }
@@ -203,7 +204,7 @@ class _TrainingLogListPageState extends State<TrainingLogListPage> {
           );
         }
 
-        final logs = provider.trainingLogs;
+        final logs = provider.logs;
         if (logs.isEmpty) {
           return Center(
             child: Column(
@@ -342,10 +343,10 @@ class _TrainingLogListPageState extends State<TrainingLogListPage> {
         ),
         actions: [
           TextButton(
-            onPressed: () async {
+            onPressed: () {
               if (_startDate != null && _endDate != null) {
                 final provider = Provider.of<TrainingLogProvider>(context, listen: false);
-                await provider.filterTrainingLogsByDateRange(
+                provider.filterTrainingLogsByDateRange(
                   widget.program.id,
                   _startDate!,
                   _endDate!,
@@ -422,10 +423,10 @@ class _TrainingLogListPageState extends State<TrainingLogListPage> {
         ),
         actions: [
           TextButton(
-            onPressed: () async {
+            onPressed: () {
               if (_startDate != null && _endDate != null) {
                 final provider = Provider.of<TrainingLogProvider>(context, listen: false);
-                await provider.filterTrainingLogsByDateRange(
+                provider.filterTrainingLogsByDateRange(
                   widget.program.id,
                   _startDate!,
                   _endDate!,
@@ -480,7 +481,8 @@ class _TrainingLogListPageState extends State<TrainingLogListPage> {
     }
   }
 
-  String _formatDate(DateTime date) {
+  String _formatDate(Timestamp timestamp) {
+    final date = timestamp.toDate();
     final months = [
       'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
       'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'

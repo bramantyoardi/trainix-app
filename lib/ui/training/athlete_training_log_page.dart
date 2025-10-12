@@ -358,7 +358,7 @@ class _AthleteTrainingLogPageState extends State<AthleteTrainingLogPage> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                DateFormat('dd MMM yyyy, HH:mm').format(log.date),
+                DateFormat('dd MMM yyyy, HH:mm').format(log.date.toDate()),
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 16,

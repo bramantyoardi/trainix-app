@@ -7,6 +7,7 @@ import 'components/bottom_navbar.dart';
 import 'components/top_navbar.dart';
 import '../providers/auth_provider.dart';
 import '../providers/team_provider.dart';
+import 'widgets/email_verification_guard.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -22,6 +23,12 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    _loadInitialData();
+  }
+
+  Future<void> _loadInitialData() async {
+    final teamProvider = Provider.of<TeamProvider>(context, listen: false);
+    await teamProvider.loadUserTeams();
     _checkUserRole();
   }
 
@@ -29,11 +36,14 @@ class _HomePageState extends State<HomePage> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final teamProvider = Provider.of<TeamProvider>(context, listen: false);
     
-    if (authProvider.user != null && teamProvider.teams.isNotEmpty) {
-      final isCoach = await teamProvider.isCoachInTeam(
-        teamId: teamProvider.teams.first.id,
-        userId: authProvider.user!.uid,
-      );
+    if (authProvider.user != null) {
+      bool isCoach = false;
+      if (teamProvider.teams.isNotEmpty) {
+        isCoach = await teamProvider.isCoachInTeam(
+          teamId: teamProvider.teams.first.id,
+          userId: authProvider.user!.uid,
+        );
+      }
       
       if (mounted) {
         setState(() {
@@ -52,7 +62,8 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return EmailVerificationGuard(
+      child: Scaffold(
       backgroundColor: const Color(0xFF002122),
       body: SafeArea(
         child: Column(
@@ -75,25 +86,17 @@ class _HomePageState extends State<HomePage> {
                     child: Column(
                       children: [
                         const WelcomeSection(),
-                        const TeamsSection(),
                         const SizedBox(height: 20),
-                        if (teamProvider.teams.isNotEmpty && !_isLoading)
-                          TeamsSection(
-                            isCoach: _isCoach,
-                            userId: user.uid,
-                          )
-                        else if (_isLoading)
+                        if (_isLoading)
                           const Center(
                             child: CircularProgressIndicator(
                               color: Color(0xFF00BF63),
                             ),
                           )
                         else
-                          const Center(
-                            child: Text(
-                              'No teams available',
-                              style: TextStyle(color: Colors.white),
-                            ),
+                          TeamsSection(
+                            isCoach: _isCoach,
+                            userId: user.uid,
                           ),
                         const SizedBox(height: 80),
                       ],
@@ -105,6 +108,6 @@ class _HomePageState extends State<HomePage> {
           ],
         ),
       ),
-    );
+    ));
   }
 }

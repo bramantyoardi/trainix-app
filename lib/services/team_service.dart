@@ -118,25 +118,24 @@ class TeamService {
 
   // Mendapatkan tim berdasarkan pembuat
   Stream<List<Team>> getTeamsByCreator(String creatorId) {
-    return _firestoreService
-        .getFilteredCollection(_teamCollection, 'createdBy', creatorId)
+    return FirebaseFirestore.instance
+        .collection(_teamCollection)
+        .where('createdBy', isEqualTo: creatorId)
+        .snapshots()
         .map((snapshot) {
-      return snapshot.docs.map((doc) {
-        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-        data['id'] = doc.id;
-        return Team.fromJson(data);
-      }).toList();
-    });
+          return snapshot.docs.map((doc) {
+            Map<String, dynamic> data = doc.data();
+            data['id'] = doc.id;
+            return Team.fromJson(data);
+          }).toList();
+        });
   }
 
-  // STANDARDIZED API METHODS WITH NAMED PARAMETERS
-
-  // Join team by code - FIXED WITH NAMED PARAMETERS
-  Future<String?> joinTeamByCode(
-      {required String teamCode, required String userId}) async {
+  // Join team by code
+  Future<bool> joinTeamByCode({required String teamCode, required String userId}) async {
     try {
       final team = await getTeamByCode(teamCode);
-      if (team == null) return null;
+      if (team == null) return false;
 
       final existingMember = await FirebaseFirestore.instance
           .collection(_teamCollection)
@@ -146,7 +145,7 @@ class TeamService {
           .get();
 
       if (existingMember.exists) {
-        return 'already_member';
+        return false;
       }
 
       final memberData = {
@@ -165,16 +164,36 @@ class TeamService {
           .doc(userId)
           .set(memberData);
 
-      return userId;
+      return true;
     } catch (e) {
       print('Error joining team: $e');
-      return null;
+      return false;
     }
   }
 
-  // Check if user is coach in team - FIXED WITH NAMED PARAMETERS
-  Future<bool> isCoachInTeam(
-      {required String teamId, required String userId}) async {
+  // Join team by invite code
+  Future<bool> joinTeamByInviteCode({required String inviteCode, required String userId}) async {
+    try {
+      final teamId = _encryptionService.decryptInviteCode(inviteCode);
+      if (teamId == null) {
+        throw Exception('Invalid invite code');
+      }
+
+      final teamDoc = await _firestoreService.getDocument('teams', teamId);
+      if (teamDoc == null) {
+        throw Exception('Team not found');
+      }
+
+      await _createMembership(userId, teamId, 'athlete');
+      return true;
+    } catch (e) {
+      print('Error joining team: $e');
+      return false;
+    }
+  }
+
+  // Check if user is coach in team
+  Future<bool> isCoachInTeam({required String teamId, required String userId}) async {
     try {
       final memberDoc = await FirebaseFirestore.instance
           .collection(_teamCollection)
@@ -194,12 +213,13 @@ class TeamService {
     }
   }
 
-  // Update member status - SINGLE IMPLEMENTATION WITH NAMED PARAMETERS
-  Future<bool> updateMemberStatus(
-      {required String teamId,
-      required String userId,
-      required String status,
-      String? approvedBy}) async {
+  // Update member status
+  Future<bool> updateMemberStatus({
+    required String teamId,
+    required String userId,
+    required String status,
+    String? approvedBy
+  }) async {
     try {
       final updateData = <String, dynamic>{
         'isActive': status == 'approved',
@@ -209,13 +229,11 @@ class TeamService {
       if (status == 'approved' && approvedBy != null) {
         updateData['approvedBy'] = approvedBy;
         updateData['dateJoined'] = FieldValue.serverTimestamp();
-        print(
-            'Member approved: userId=$userId, teamId=$teamId, approvedBy=$approvedBy');
+        print('Member approved: userId=$userId, teamId=$teamId, approvedBy=$approvedBy');
       } else if (status == 'rejected' && approvedBy != null) {
         updateData['approvedBy'] = approvedBy;
         updateData['dateJoined'] = null;
-        print(
-            'Member rejected: userId=$userId, teamId=$teamId, rejectedBy=$approvedBy');
+        print('Member rejected: userId=$userId, teamId=$teamId, rejectedBy=$approvedBy');
       }
 
       await FirebaseFirestore.instance
@@ -232,9 +250,8 @@ class TeamService {
     }
   }
 
-  // Remove member - SINGLE IMPLEMENTATION WITH NAMED PARAMETERS
-  Future<bool> removeMember(
-      {required String teamId, required String userId}) async {
+  // Remove member
+  Future<bool> removeMember({required String teamId, required String userId}) async {
     try {
       await FirebaseFirestore.instance
           .collection(_teamCollection)
@@ -249,11 +266,12 @@ class TeamService {
     }
   }
 
-  // Change member role - WITH NAMED PARAMETERS
-  Future<bool> changeMemberRole(
-      {required String teamId,
-      required String userId,
-      required String newRole}) async {
+  // Change member role
+  Future<bool> changeMemberRole({
+    required String teamId,
+    required String userId,
+    required String newRole
+  }) async {
     try {
       await FirebaseFirestore.instance
           .collection(_teamCollection)
@@ -268,42 +286,24 @@ class TeamService {
     }
   }
 
-  // Fix getTeamMembers to return Future<List<UserTeamRole>>
-  Future<List<UserTeamRole>> getTeamMembers({required String teamId}) async {
-    final snap = await _firestoreService.getCollection('teams/$teamId/members');
-    
-    return snap.docs.map((d) {
-      final data = d.data();
-      return UserTeamRole.fromJson({...data, 'id': d.id});
-    }).toList();
-  }
+  // Get team members
+  Future<List<UserTeamRole>> getTeamMembers(String teamId) async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection(_teamCollection)
+          .doc(teamId)
+          .collection('members')
+          .get();
 
-  Future<bool> joinTeamByCode({required String teamCode, required String userId}) async {
-    final q = await _firestoreService.queryCollection(
-      'teams',
-      field: 'code',
-      isEqualTo: teamCode,
-      limit: 1
-    );
-    
-    if (q.docs.isEmpty) return false;
-    final teamId = q.docs.first.id;
-    // ... tulis membership
-    return true;
-  }
-
-  Future<bool> joinTeamByInviteCode({required String inviteCode, required String userId}) async {
-    final q = await _firestoreService.queryCollection(
-      'teams',
-      field: 'inviteCode',
-      isEqualTo: inviteCode,
-      limit: 1
-    );
-    
-    if (q.docs.isEmpty) return false;
-    final teamId = q.docs.first.id;
-    // ... tulis membership
-    return true;
+      return snap.docs.map((d) {
+        Map<String, dynamic> data = d.data();
+        data['id'] = d.id;
+        return UserTeamRole.fromJson(data);
+      }).toList();
+    } catch (e) {
+      print('Error getting team members: $e');
+      return [];
+    }
   }
 
   // Get user teams
@@ -336,49 +336,42 @@ class TeamService {
   }
 
   // Get team by code
-  Future<Team?> getTeamByCode(String teamCode) async {
+  Future<Team?> getTeamByCode(String code) async {
     try {
-      QuerySnapshot querySnapshot = await _firestoreService
-          .getFilteredCollection(_teamCollection, 'teamCode', teamCode)
-          .first;
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection(_teamCollection)
+          .where('code', isEqualTo: code)
+          .get();
 
-      if (querySnapshot.docs.isNotEmpty) {
-        DocumentSnapshot doc = querySnapshot.docs.first;
-        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-        data['id'] = doc.id;
-        return Team.fromJson(data);
+      if (querySnapshot.docs.isEmpty) {
+        return null;
       }
-      return null;
+
+      final doc = querySnapshot.docs.first;
+      Map<String, dynamic> data = doc.data();
+      data['id'] = doc.id;
+      return Team.fromJson(data);
     } catch (e) {
       print('Error getting team by code: $e');
       return null;
     }
   }
 
-  // Utility methods
-
-  Future<Map<String, dynamic>?> joinTeamByInviteCode(
-      String userId, String inviteCode) async {
+  // Get team by invite code
+  Future<Team?> getTeamByInviteCode(String inviteCode) async {
     try {
       final teamId = _encryptionService.decryptInviteCode(inviteCode);
-      if (teamId == null) {
-        throw Exception('Invalid invite code');
+      if (teamId != null) {
+        return await getTeam(teamId);
       }
-
-      final teamDoc = await _firestoreService.getDocument('teams', teamId);
-      if (teamDoc == null) {
-        throw Exception('Team not found');
-      }
-
-      await _createMembership(userId, teamId, 'athlete');
-
-      return {'success': true, 'teamId': teamId};
+      return null;
     } catch (e) {
-      print('Error joining team: $e');
+      print('Error getting team by invite code: $e');
       return null;
     }
   }
 
+  // Leave team
   Future<bool> leaveTeam(String userId, String teamId) async {
     try {
       await FirebaseFirestore.instance
@@ -394,6 +387,7 @@ class TeamService {
     }
   }
 
+  // Get user role in team
   Future<String?> getUserRoleInTeam(String userId, String teamId) async {
     try {
       final memberDoc = await FirebaseFirestore.instance
@@ -413,6 +407,7 @@ class TeamService {
     }
   }
 
+  // Generate invite code
   Future<String?> generateInviteCode(String teamId) async {
     try {
       return _encryptionService.encryptInviteCode(teamId);
@@ -422,21 +417,8 @@ class TeamService {
     }
   }
 
-  Future<Team?> getTeamByInviteCode(String inviteCode) async {
-    try {
-      final teamId = _encryptionService.decryptInviteCode(inviteCode);
-      if (teamId != null) {
-        return await getTeam(teamId);
-      }
-      return null;
-    } catch (e) {
-      print('Error getting team by invite code: $e');
-      return null;
-    }
-  }
-
-  Future<void> _createMembership(
-      String userId, String teamId, String role) async {
+  // Create membership
+  Future<void> _createMembership(String userId, String teamId, String role) async {
     try {
       await FirebaseFirestore.instance
           .collection(_teamCollection)

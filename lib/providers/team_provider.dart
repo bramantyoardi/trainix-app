@@ -10,11 +10,13 @@ class TeamProvider extends ChangeNotifier {
   
   List<Team> _teams = [];
   List<UserTeamRole> _userTeamRoles = [];
+  List<UserTeamRole> _teamMembers = [];
   bool _isLoading = false;
   String? _errorMessage;
 
   List<Team> get teams => _teams;
   List<UserTeamRole> get userTeamRoles => _userTeamRoles;
+  List<UserTeamRole> get teamMembers => _teamMembers;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   
@@ -33,7 +35,8 @@ class TeamProvider extends ChangeNotifier {
     try {
       _teamService.getUserTeams(user.uid).listen((userTeamRoles) {
         // Convert UserTeamRole list to Team list
-        _teams = userTeamRoles.map((role) => role.team).toList();
+        _teams = userTeamRoles.map((role) => role.team!).where((team) => team != null).toList();
+        _userTeamRoles = userTeamRoles;
         _isLoading = false;
         notifyListeners();
       });
@@ -72,12 +75,16 @@ class TeamProvider extends ChangeNotifier {
     if (user == null) return false;
 
     try {
-      final success = await _teamService.joinTeamByInviteCode(user.uid, inviteCode);
+      final success = await _teamService.joinTeamByInviteCode(
+        inviteCode: inviteCode,
+        userId: user.uid,
+      );
       if (success) {
         // Refresh teams list
         await loadUserTeams();
+        return true;
       }
-      return success;
+      return false;
     } catch (e) {
       _errorMessage = 'Failed to join team: $e';
       notifyListeners();
@@ -156,7 +163,7 @@ class TeamProvider extends ChangeNotifier {
   // Get user role in team
   String? getUserRoleInTeam(String teamId) {
     try {
-      final userTeamRole = _userTeamRoles.firstWhere((role) => role.team.id == teamId);
+      final userTeamRole = _userTeamRoles.firstWhere((role) => role.team?.id == teamId);
       return userTeamRole.role;
     } catch (e) {
       return null;
@@ -174,13 +181,27 @@ class TeamProvider extends ChangeNotifier {
   }
 
   // Get team members
-  Future<List<Map<String, dynamic>>> getTeamMembers(String teamId) async {
+  Future<List<UserTeamRole>> getTeamMembers(String teamId) async {
     try {
-      return await _teamService.getTeamMembers(teamId);
+      final members = await _teamService.getTeamMembers(teamId);
+      _teamMembers = members;
+      notifyListeners();
+      return members;
     } catch (e) {
       _errorMessage = 'Failed to get team members: $e';
       notifyListeners();
       return [];
+    }
+  }
+
+  // Load team members
+  Future<void> loadTeamMembers(String teamId) async {
+    try {
+      _teamMembers = await _teamService.getTeamMembers(teamId);
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Failed to load team members: $e';
+      notifyListeners();
     }
   }
 
@@ -205,7 +226,8 @@ class TeamProvider extends ChangeNotifier {
       notifyListeners();
     }
   }
-  // Update member status - FIXED WITH NAMED PARAMETERS
+
+  // Update member status
   Future<bool> updateMemberStatus({
     required String teamId, 
     required String userId, 
@@ -226,7 +248,7 @@ class TeamProvider extends ChangeNotifier {
     }
   }
 
-  // Remove member - FIXED WITH NAMED PARAMETERS
+  // Remove member
   Future<bool> removeMember({required String teamId, required String userId}) async {
     try {
       return await _teamService.removeMember(teamId: teamId, userId: userId);
@@ -237,7 +259,7 @@ class TeamProvider extends ChangeNotifier {
     }
   }
 
-  // Change member role - FIXED WITH NAMED PARAMETERS
+  // Change member role
   Future<bool> changeMemberRole({
     required String teamId, 
     required String userId, 
@@ -256,7 +278,7 @@ class TeamProvider extends ChangeNotifier {
     }
   }
 
-  // Check if user is coach in team - FIXED WITH NAMED PARAMETERS
+  // Check if user is coach in team
   Future<bool> isCoachInTeam({required String teamId, required String userId}) async {
     try {
       return await _teamService.isCoachInTeam(teamId: teamId, userId: userId);
@@ -282,11 +304,15 @@ class TeamProvider extends ChangeNotifier {
     if (user == null) return false;
 
     try {
-      final success = await _teamService.joinTeamByCode(user.uid, teamCode);
+      final success = await _teamService.joinTeamByCode(
+        teamCode: teamCode,
+        userId: user.uid,
+      );
       if (success) {
         await loadUserTeams();
+        return true;
       }
-      return success;
+      return false;
     } catch (e) {
       _errorMessage = 'Failed to join team by code: $e';
       notifyListeners();
@@ -298,6 +324,7 @@ class TeamProvider extends ChangeNotifier {
   void clearTeams() {
     _teams.clear();
     _userTeamRoles.clear();
+    _teamMembers.clear();
     notifyListeners();
   }
 
@@ -309,36 +336,8 @@ class TeamProvider extends ChangeNotifier {
   // Remove team from local list
   void removeTeam(String teamId) {
     _teams.removeWhere((team) => team.id == teamId);
-    _userTeamRoles.removeWhere((role) => role.team.id == teamId);
+    _userTeamRoles.removeWhere((role) => role.team?.id == teamId);
+    _teamMembers.removeWhere((member) => member.team?.id == teamId);
     notifyListeners();
-  }
-  List<UserTeamRole> _teamMembers = <UserTeamRole>[];
-  List<UserTeamRole> get teamMembers => _teamMembers;
-
-  Future<void> loadTeamMembers(String teamId) async {
-    _teamMembers = await _teamService.getTeamMembers(teamId: teamId);
-    notifyListeners();
-  }
-
-  Future<bool> joinTeamByInviteCode(String inviteCode, String userId) async {
-    return await _teamService.joinTeamByInviteCode(
-      inviteCode: inviteCode, userId: userId,
-    );
-  }
-
-  Future<bool> joinTeamByCode(String teamCode, String userId) async {
-    return await _teamService.joinTeamByCode(
-      teamCode: teamCode, userId: userId,
-    );
-  }
-  // Fix getTeamMembers to return Future<List<UserTeamRole>>
-  Future<List<UserTeamRole>> getTeamMembers(String teamId) async {
-    try {
-      return await _teamService.getTeamMembers(teamId: teamId);
-    } catch (e) {
-      _errorMessage = 'Failed to get team members: $e';
-      notifyListeners();
-      return [];
-    }
   }
 }

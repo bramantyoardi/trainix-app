@@ -7,7 +7,14 @@ import '../team_management/create_team_page.dart';
 import '../team_management/team_details_page.dart';
 
 class TeamsSection extends StatelessWidget {
-  const TeamsSection({Key? key}) : super(key: key);
+  final bool isCoach;
+  final String userId;
+
+  const TeamsSection({
+    Key? key,
+    required this.isCoach,
+    required this.userId,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -163,51 +170,145 @@ class TeamsSection extends StatelessWidget {
   }
 
   Widget _buildAddTeamCard(BuildContext context, AuthProvider authProvider) {
-    return GestureDetector(
-      onTap: () async {
-        if (authProvider.user != null) {
-          final result = await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const CreateTeamPage(),
+    return Container(
+      width: 180,
+      height: 230,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.white24, width: 2),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Create Team Button
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00BF63),
+              minimumSize: const Size(double.infinity, 40),
             ),
-          );
-          // Refresh teams if team was created successfully
-          if (result == true) {
-            final teamProvider = Provider.of<TeamProvider>(context, listen: false);
-            await teamProvider.loadUserTeams();
-          }
-        }
-      },
-      child: Container(
-        width: 180,
-        height: 230,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.white24, width: 2),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.add_circle_outline,
-              size: 48,
-              color: Colors.white54,
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Add New Team',
+            onPressed: () async {
+              if (authProvider.user != null) {
+                final result = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const CreateTeamPage(),
+                  ),
+                );
+                // Refresh teams if team was created successfully
+                if (result == true) {
+                  final teamProvider = Provider.of<TeamProvider>(context, listen: false);
+                  await teamProvider.loadUserTeams();
+                }
+              }
+            },
+            child: const Text(
+              'Buat Tim',
               style: TextStyle(
-                color: Colors.white54, 
-                fontFamily: 'Poppins', 
+                color: Colors.white,
+                fontFamily: 'Poppins',
                 fontWeight: FontWeight.w500,
-                fontSize: 14,
               ),
-              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Join Team Button
+          OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Color(0xFF00BF63)),
+              minimumSize: const Size(double.infinity, 40),
+            ),
+            onPressed: () {
+              _showJoinTeamDialog(context);
+            },
+            child: const Text(
+              'Gabung Tim',
+              style: TextStyle(
+                color: Color(0xFF00BF63),
+                fontFamily: 'Poppins',
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showJoinTeamDialog(BuildContext context) {
+    final teamCodeController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A4747),
+        title: const Text(
+          'Gabung Tim',
+          style: TextStyle(
+            color: Colors.white,
+            fontFamily: 'Poppins',
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: teamCodeController,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                labelText: 'Kode Tim',
+                labelStyle: TextStyle(color: Colors.white70),
+                enabledBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: Colors.white24),
+                ),
+                focusedBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: Color(0xFF00BF63)),
+                ),
+              ),
             ),
           ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Batal',
+              style: TextStyle(color: Colors.white70),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00BF63),
+            ),
+            onPressed: () async {
+              final teamProvider = Provider.of<TeamProvider>(context, listen: false);
+              final success = await teamProvider.joinTeam(teamCodeController.text);
+              
+              if (success && context.mounted) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Berhasil bergabung dengan tim!'),
+                    backgroundColor: Color(0xFF00BF63),
+                  ),
+                );
+                await teamProvider.loadUserTeams();
+              } else if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Gagal bergabung dengan tim. Pastikan kode tim benar.'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            child: const Text(
+              'Gabung',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
       ),
     );
   }

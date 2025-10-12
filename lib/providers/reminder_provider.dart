@@ -95,33 +95,6 @@ class ReminderProvider extends ChangeNotifier {
     }
   }
 
-  // Update reminder
-  Future<bool> updateReminder(String reminderId, Map<String, dynamic> data) async {
-    try {
-      final success = await _reminderService.updateReminder(
-        reminderId: reminderId, 
-        data: data
-      );
-      if (success) {
-        // Update local list
-        final index = _reminders.indexWhere((r) => r.id == reminderId);
-        if (index != -1) {
-          // Reload the updated reminder
-          final updatedReminder = await _reminderService.getReminder(reminderId);
-          if (updatedReminder != null) {
-            _reminders[index] = updatedReminder;
-            notifyListeners();
-          }
-        }
-      }
-      return success;
-    } catch (e) {
-      _errorMessage = 'Failed to update reminder: $e';
-      notifyListeners();
-      return false;
-    }
-  }
-
   // Delete reminder
   Future<bool> deleteReminder(String reminderId) async {
     try {
@@ -204,8 +177,7 @@ class ReminderProvider extends ChangeNotifier {
     await loadRemindersByTeam(teamId);
   }
 
-  // Add missing updateReminderStatus method
-  // Fix updateReminderStatus to pass String instead of bool
+  // Update reminder status
   Future<bool> updateReminderStatus(String reminderId, String status) async {
     try {
       final success = await _reminderService.updateReminderStatus(reminderId, status);
@@ -225,16 +197,6 @@ class ReminderProvider extends ChangeNotifier {
       notifyListeners();
       return false;
     }
-  }
-
-  // Remove duplicate updateReminder method - keep only this one
-  Future<void> updateReminder(String reminderId, Map<String, dynamic> data) async {
-    await _reminderService.updateReminder(reminderId: reminderId, data: data);
-  }
-
-  // Add createReminder method that accepts Map<String, dynamic>
-  Future<void> createReminder(Map<String, dynamic> data) async {
-    await _reminderService.createReminder(data: data);
   }
 
   // Add missing methods for team and athlete reminders
@@ -275,7 +237,7 @@ class ReminderProvider extends ChangeNotifier {
   }
 
   // Add overloaded updateReminder method for Reminder objects
-  Future<bool> updateReminder(Reminder reminder) async {
+  Future<bool> updateReminderObject(Reminder reminder) async {
     try {
       final success = await _reminderService.updateReminder(
         reminderId: reminder.id, 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/program.dart';
 import '../../models/training_intensity.dart';
 
@@ -55,6 +56,11 @@ class _IntensityInputPageState extends State<IntensityInputPage> {
     for (var athlete in _mockAthletes) {
       _intensityValues[athlete['id']] = 5; // Default nilai tengah (1-10)
     }
+  }
+
+  String _formatDate(Timestamp timestamp) {
+    final date = timestamp.toDate();
+    return '${date.day}/${date.month}/${date.year}';
   }
 
   @override
@@ -142,7 +148,7 @@ class _IntensityInputPageState extends State<IntensityInputPage> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Tanggal: ${widget.program.weekAnchor.day}/${widget.program.weekAnchor.month}/${widget.program.weekAnchor.year}',
+            'Tanggal: ${_formatDate(widget.program.weekAnchor)}',
             style: const TextStyle(
               color: Colors.white70,
               fontSize: 14,
@@ -208,12 +214,10 @@ class _IntensityInputPageState extends State<IntensityInputPage> {
             children: [
               CircleAvatar(
                 backgroundColor: const Color(0xFF65EAE8).withOpacity(0.2),
-                radius: 20,
                 child: Text(
                   athlete['name'].substring(0, 1),
                   style: const TextStyle(
                     color: Color(0xFF65EAE8),
-                    fontSize: 16,
                     fontFamily: 'Poppins',
                     fontWeight: FontWeight.w600,
                   ),
@@ -235,83 +239,86 @@ class _IntensityInputPageState extends State<IntensityInputPage> {
                     ),
                     Text(
                       athlete['role'],
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.7),
+                        fontSize: 14,
                         fontFamily: 'Poppins',
                       ),
                     ),
                   ],
                 ),
               ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: _getIntensityColor(currentValue),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Text(
-                  currentValue.toString(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontFamily: 'Poppins',
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
             ],
           ),
           const SizedBox(height: 16),
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                '1',
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 12,
+              Text(
+                'Intensitas: $currentValue',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
                   fontFamily: 'Poppins',
+                  fontWeight: FontWeight.w500,
                 ),
               ),
-              Expanded(
-                child: Slider(
-                  value: currentValue.toDouble(),
-                  min: 1,
-                  max: 10,
-                  divisions: 9,
-                  activeColor: _getIntensityColor(currentValue),
-                  inactiveColor: Colors.white24,
-                  onChanged: (value) {
-                    setState(() {
-                      _intensityValues[athleteId] = value.round();
-                    });
-                  },
-                ),
-              ),
-              const Text(
-                '10',
+              Text(
+                _getIntensityLabel(currentValue),
                 style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 12,
+                  color: _getIntensityColor(currentValue),
+                  fontSize: 14,
                   fontFamily: 'Poppins',
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 8),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: const Color(0xFF65EAE8),
+              inactiveTrackColor: const Color(0xFF65EAE8).withOpacity(0.2),
+              thumbColor: const Color(0xFF65EAE8),
+              overlayColor: const Color(0xFF65EAE8).withOpacity(0.2),
+              valueIndicatorColor: const Color(0xFF65EAE8),
+              valueIndicatorTextStyle: const TextStyle(
+                color: Colors.white,
+                fontFamily: 'Poppins',
+              ),
+            ),
+            child: Slider(
+              value: currentValue.toDouble(),
+              min: 1,
+              max: 10,
+              divisions: 9,
+              label: currentValue.toString(),
+              onChanged: (value) {
+                setState(() {
+                  _intensityValues[athleteId] = value.round();
+                });
+              },
+            ),
           ),
         ],
       ),
     );
   }
 
+  String _getIntensityLabel(int value) {
+    if (value <= 2) return 'Sangat Ringan';
+    if (value <= 4) return 'Ringan';
+    if (value <= 6) return 'Sedang';
+    if (value <= 8) return 'Berat';
+    return 'Sangat Berat';
+  }
+
   Color _getIntensityColor(int value) {
-    if (value <= 3) {
-      return Colors.green;
-    } else if (value <= 7) {
-      return Colors.orange;
-    } else {
-      return Colors.red;
-    }
+    if (value <= 2) return Colors.green;
+    if (value <= 4) return Colors.lightGreen;
+    if (value <= 6) return Colors.yellow;
+    if (value <= 8) return Colors.orange;
+    return Colors.red;
   }
 
   Widget _buildSaveButton() {
@@ -327,7 +334,7 @@ class _IntensityInputPageState extends State<IntensityInputPage> {
           ),
         ),
         child: const Text(
-          'Simpan Intensitas',
+          'Simpan',
           style: TextStyle(
             color: Color(0xFF002122),
             fontSize: 16,
@@ -339,41 +346,56 @@ class _IntensityInputPageState extends State<IntensityInputPage> {
     );
   }
 
-  Future<void> _saveIntensities() async {
-    setState(() {
-      _isLoading = true;
-    });
+  void _saveIntensities() async {
+    setState(() => _isLoading = true);
 
     try {
-      // Simulasi delay untuk proses penyimpanan
-      await Future.delayed(const Duration(seconds: 1));
+      final intensities = _intensityValues.entries.map((entry) {
+        // Convert slider value (1-10) to HRR percentage (0-100)
+        final hrrPercentage = (entry.value / 10) * 100;
+        
+        // Determine intensity zone based on HRR percentage
+        String intensityZone;
+        if (hrrPercentage <= 20) {
+          intensityZone = 'Zone 1';
+        } else if (hrrPercentage <= 40) {
+          intensityZone = 'Zone 2';
+        } else if (hrrPercentage <= 60) {
+          intensityZone = 'Zone 3';
+        } else if (hrrPercentage <= 80) {
+          intensityZone = 'Zone 4';
+        } else {
+          intensityZone = 'Zone 5';
+        }
 
-      // Di sini nanti akan ada kode untuk menyimpan ke Firebase
-      // Untuk sekarang, kita hanya simulasikan berhasil
+        return TrainingIntensity(
+          id: '',
+          athleteId: entry.key,
+          programId: widget.program.id,
+          teamId: widget.teamId,
+          hrrPercentage: hrrPercentage,
+          intensityZone: intensityZone,
+          recordedAt: Timestamp.now(),
+          avgHeartRate: null,
+          maxHeartRate: null,
+          duration: null,
+        );
+      }).toList();
 
-      if (!mounted) return;
-      Navigator.pop(context, true); // Kembali dengan status berhasil
+      // TODO: Implement save to Firestore
+      print('Saving intensities: $intensities');
 
+      Navigator.pop(context, intensities);
+    } catch (e) {
+      print('Error saving intensities: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Intensitas latihan berhasil disimpan'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
+          content: Text('Gagal menyimpan data intensitas latihan'),
           backgroundColor: Colors.red,
         ),
       );
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      setState(() => _isLoading = false);
     }
   }
 }

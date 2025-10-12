@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/program.dart'; // Update import ke model Program yang baru
 import '../../providers/program_provider.dart';
 import '../components/top_navbar.dart';
@@ -222,9 +223,10 @@ class _ProgramListPageState extends State<ProgramListPage> {
     );
   }
 
-  int _getWeekNumber(DateTime date) {
+  int _getWeekNumber(Timestamp weekAnchor) {
+    final date = weekAnchor.toDate();
     final startOfYear = DateTime(date.year, 1, 1);
-    final daysSinceStart = date.difference(startOfYear).inDays;
-    return (daysSinceStart / 7).ceil();
+    final days = date.difference(startOfYear).inDays;
+    return ((days - date.weekday + 10) / 7).floor();
   }
 }

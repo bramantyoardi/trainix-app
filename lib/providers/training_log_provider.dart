@@ -14,7 +14,7 @@ class TrainingLogProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
-  // Updated to use Stream from service
+  // Load logs by team
   void loadLogsByTeam(String teamId) {
     _isLoading = true; 
     _errorMessage = null; 
@@ -34,28 +34,25 @@ class TrainingLogProvider with ChangeNotifier {
     );
   }
 
-  // Updated to use Stream from service
-  void loadLogsByProgram(String programId) {
-    _isLoading = true; 
-    _errorMessage = null; 
+  // Load logs by program
+  Future<void> loadLogsByProgram(String programId) async {
+    _isLoading = true;
+    _errorMessage = null;
     notifyListeners();
-    
-    _svc.getProgramTrainingLogs(programId).listen(
-      (logs) {
-        _logs = logs;
-        _isLoading = false;
-        notifyListeners();
-      },
-      onError: (e) {
-        _errorMessage = 'Failed to load training logs: $e';
-        _isLoading = false;
-        notifyListeners();
-      },
-    );
+  
+    try {
+      final logs = await _svc.getProgramTrainingLogs(programId).first;
+      _logs = logs;
+      _isLoading = false;
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Failed to load training logs: $e';
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
-  // Updated to use Stream from service
-  // Fix: Change async Stream method to return Future
+  // Get training logs by date range
   Future<List<TrainingLog>> getTrainingLogsByDateRange(
       String teamId, DateTime start, DateTime end) async {
     final teamLogs = await _svc.getTeamTrainingLogs(teamId).first;
@@ -65,14 +62,14 @@ class TrainingLogProvider with ChangeNotifier {
     }).toList();
   }
 
-  // Fix: Change async Stream method to return Future
+  // Get training logs by athlete
   Future<List<TrainingLog>> getTrainingLogsByAthlete(
       String teamId, String athleteId) async {
     final teamLogs = await _svc.getTeamTrainingLogs(teamId).first;
     return teamLogs.where((l) => l.athleteId == athleteId).toList();
   }
 
-  // Updated to use Stream from service
+  // Filter training logs by date range
   void filterTrainingLogsByDateRange(
       String programId, DateTime start, DateTime end) {
     _svc.getProgramTrainingLogs(programId).listen(
@@ -86,12 +83,12 @@ class TrainingLogProvider with ChangeNotifier {
     );
   }
 
-  // Fix: Remove async from void method
+  // Get training logs by HRR band
   void getTrainingLogsByHRRBand(String programId, int band) {
     _loadLogsByHRRBand(programId, band);
   }
 
-  // Fix: Correct the async method call
+  // Load logs by HRR band (private helper)
   Future<void> _loadLogsByHRRBand(String programId, int band) async {
     final programLogs = await _svc.getProgramTrainingLogs(programId).first;
     _logs = programLogs.where((log) {
@@ -104,6 +101,7 @@ class TrainingLogProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  // Create training log with HRR data
   Future<bool> createTrainingLogWithHRR({
     required String teamId,
     required String programId,
@@ -154,33 +152,13 @@ class TrainingLogProvider with ChangeNotifier {
     }
   }
 
+  // Get logs by athlete
   List<TrainingLog> getLogsByAthlete(String athleteId) =>
       _logs.where((l) => l.athleteId == athleteId).toList();
 
+  // Clear all logs
   void clearLogs() {
     _logs.clear();
     notifyListeners();
-  }
-
-  // Fix: Change loadLogsByProgram to async for consistency
-  // Add getter for trainingLogs
-  List<TrainingLog> get trainingLogs => _logs;
-  
-  // Remove duplicate loadLogsByProgram - keep only one
-  Future<void> loadLogsByProgram(String programId) async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-  
-    try {
-      final logs = await _svc.getProgramTrainingLogs(programId).first;
-      _logs = logs;
-      _isLoading = false;
-      notifyListeners();
-    } catch (e) {
-      _errorMessage = 'Failed to load training logs: $e';
-      _isLoading = false;
-      notifyListeners();
-    }
   }
 }

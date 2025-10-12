@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/reminder.dart';
 import '../../providers/reminder_provider.dart';
 import '../../providers/auth_provider.dart';
@@ -96,8 +97,8 @@ class _ReminderListPageState extends State<ReminderListPage>
                       final authProvider = Provider.of<AuthProvider>(context, listen: false);
                       final teamProvider = Provider.of<TeamProvider>(context, listen: false);
                       
-                      // Await the isCoachInTeam call since it returns Future<bool>
-                      final isCoach = await teamProvider.isCoachInTeam(widget.teamId);
+                      // Check if user is coach in the team
+                      final isCoach = teamProvider.isUserCoach(widget.teamId);
                       
                       final result = await Navigator.push(
                         context,
@@ -303,7 +304,7 @@ class _ReminderListPageState extends State<ReminderListPage>
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    _formatDate(targetDate),
+                    _formatDate(Timestamp.fromDate(targetDate)),
                     style: TextStyle(
                       color: Colors.white.withOpacity(0.5),
                       fontSize: 12,
@@ -392,7 +393,8 @@ class _ReminderListPageState extends State<ReminderListPage>
     }
   }
 
-  String _formatDate(DateTime date) {
+  String _formatDate(Timestamp timestamp) {
+    final date = timestamp.toDate();
     final now = DateTime.now();
     final difference = date.difference(now).inDays;
     
