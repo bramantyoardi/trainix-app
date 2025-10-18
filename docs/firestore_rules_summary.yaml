@@ -1,0 +1,126 @@
+firestore_rules_summary:
+  version: v1.1.0
+  scope: "Trainix Firestore Access Matrix (Coach-centric; Owner = Coach + is_owner:true)"
+
+  users:
+    read:
+      - "Allowed: self (request.auth.uid == resource.id)"
+    write:
+      - "Allowed: self"
+    delete:
+      - "Denied"
+    notes: "Privat per pengguna; tidak diakses oleh coach."
+
+  teams:
+    read:
+      - "Allowed: team members (verified membership)"
+    write:
+      - "Allowed: Coach (team context)"
+      - "Allowed: Owner for destructive ops"
+    delete:
+      - "Allowed: Owner only"
+    notes: "Team metadata; parent dari members/programs/training_logs/reminders/leaderboards."
+
+  teams_members:
+    read:
+      - "Allowed: all team members"
+    write:
+      - "Allowed: Coach or Owner"
+      - "Forbidden: Coach cannot demote Owner"
+    delete:
+      - "Allowed: Owner or self (leave team)"
+    notes: "Owner direpresentasikan via flag is_owner:true."
+
+  teams_programs:
+    read:
+      - "Allowed: all team members"
+    write:
+      - "Allowed: Coach or Owner"
+    delete:
+      - "Allowed: Coach or Owner"
+    notes: "Audit fields wajib."
+
+  teams_training_logs:
+    read:
+      - "Allowed: all team members"
+    write:
+      - "Allowed: Coach or Owner"
+      - "Denied: Athlete (read-only)"
+    delete:
+      - "Allowed: Coach or Owner"
+    notes: "Athlete hanya melihat progresnya; Coach dapat menulis semua."
+
+  teams_reminders:
+    read:
+      - "Allowed: all team members"
+    write:
+      - "Allowed: Coach (for athlete reminders)"
+      - "Allowed: Athlete (for self reminders)"
+    delete:
+      - "Allowed: author only"
+    notes: "Gunakan athlete_id (snake_case) sebagai target; rules boleh menerima assignedTo/athleteId untuk compat."
+
+  teams_leaderboards:
+    read:
+      - "Allowed: all team members"
+    write:
+      - "Allowed: callable via cloud function (Coach scope)"
+    delete:
+      - "Denied"
+    notes: "Leaderboard = hasil agregasi; manual edit dilarang."
+
+  training_intensities:
+    read:
+      - "Allowed: athlete owner (request.auth.uid == resource.data.athleteId)"
+      - "Allowed: Coach in same team"
+    write:
+      - "Allowed: athlete owner"
+      - "Allowed: Coach"
+    delete:
+      - "Allowed: Coach or athlete owner"
+    notes: "Data intensitas HRR; camelCase fields; dual-casing diterima di rules saat transisi."
+
+  notifications:
+    read:
+      - "Allowed: owner (request.auth.uid == resource.data.userId)"
+    write:
+      - "Allowed: owner only"
+    delete:
+      - "Allowed: owner only"
+    notes: "Notifikasi personal (in-app/push)."
+
+  team_notifications:
+    read:
+      - "Allowed: team members"
+    write:
+      - "Allowed: Coach or Owner"
+    delete:
+      - "Allowed: Coach or Owner"
+    notes: "Pengumuman tim."
+
+  security_logs:
+    read:
+      - "Allowed: self only"
+    write:
+      - "Allowed: system or user self (append-only)"
+    delete:
+      - "Denied"
+    notes: "Immutable audit log."
+
+  common_rules:
+    audit_fields_required: ["created_at","created_by","updated_at","updated_by"]
+    timezone_standard: "Asia/Makassar"
+    default_visibility:
+      public: false
+      team_only: true
+    owner_representation: "Coach role + is_owner:true"
+    prohibited_mutations:
+      - "Coach cannot demote Owner"
+      - "Athlete cannot write training_logs"
+      - "Manual writes to leaderboard denied"
+
+  index_guidelines:
+    - {collection: "teams/training_logs", fields: ["athlete_id","date"]}
+    - {collection: "teams/leaderboards", fields: ["team_id","week"]}
+    - {collection: "teams/members", fields: ["status","role","user_id"]}
+    - {collection: "security_logs", fields: ["userId","timestamp"]}

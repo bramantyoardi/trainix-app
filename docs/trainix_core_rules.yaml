@@ -1,0 +1,84 @@
+trainix_core_rules:
+  version: v1.1.0
+  product:
+    name: "Trainix"
+    scope: "Manajemen intensitas latihan untuk Tarung Derajat (Coach-centric; Athlete read-only)"
+    principles:
+      - "Program & training log dibuat/diubah oleh Coach. Athlete hanya melihat."
+      - "Perhitungan intensitas berbasis HRR (Tanaka + Karvonen)."
+      - "Leaderboard mingguan menggabungkan konsistensi + intensitas → total."
+      - "Dokumen baru wajib mengikuti casing kanonik; fromJson menerima dual-casing untuk compat."
+  roles_permissions:
+    roles: ["Athlete", "Coach"]
+    owner_model:
+      realized_as_flag: true
+      flag_name: "is_owner"
+      unique_per_team: true
+      notes: "Owner adalah pembuat tim; tidak bisa diturunkan oleh coach lain."
+    write_policies:
+      team_info: ["Coach"]
+      members_role: ["Coach"]
+      program: ["Coach"]
+      training_log: ["Coach"]
+      leaderboard: ["Coach"]
+      reminder_by_coach: ["Coach"]
+      reminder_by_athlete: ["Athlete"]
+    read_policies:
+      all_team_members: true
+  team_config:
+    week_anchor: "Monday"
+    target_days_per_week: 6
+    prorate_partial_weeks: true
+    include_categories_in_intensity: ["Cardio","Strength","Teknik","Tarung"]
+    exclude_categories_from_intensity: ["Recovery","Flexibility"]
+    category_weights:
+      Cardio: 1.0
+      Strength: 0.7
+      Teknik: 0.8
+      Tarung: 1.3
+      Recovery: 0.0
+      Flexibility: 0.0
+  intensity_model:
+    hrmax_formula: "Tanaka: HRmax = 208 - 0.7*age"
+    method: "Karvonen HRR"
+    bands:
+      easy: {min: 0.50, max: 0.60}
+      mod: {min: 0.60, max: 0.70}
+      hard: {min: 0.70, max: 0.80}
+      tempo: {min: 0.80, max: 0.90}
+      max: {min: 0.90, max: 1.00}
+    scoring:
+      include_only_in_band_minutes: true
+      weekly_cap: 100
+      outlier_policy: "clamp>300"
+  leaderboard:
+    location: "teams/{teamId}/leaderboards/{leaderboardId}"
+    components: ["consistency","intensity","total"]
+    formula:
+      total: "consistency + intensity"
+    sort_order: ["total desc","intensity desc","consistency desc"]
+    eligibility:
+      min_valid_days: 4
+    breakdown:
+      per_category: true
+      per_day: true
+      notes: true
+  environments:
+    firebase_project: "trainix-app-mobile"
+    auth_providers:
+      google_sign_in: true
+    seed_data_required: true
+  file_dependencies:
+    files:
+      - name: "trainix_core_rules.yaml"
+        purpose: "Aturan inti & kebijakan logika aplikasi"
+        feeds_into: ["firestore_schema.md","firestore_rules_summary.yaml"]
+      - name: "firestore_schema.md"
+        purpose: "Blueprint struktur koleksi & field Firestore"
+        feeds_into: ["firestore_rules_summary.yaml"]
+      - name: "firestore_rules_summary.yaml"
+        purpose: "Ringkasan izin akses"
+        feeds_into: ["firestore.rules"]
+      - name: "firestore.rules"
+        purpose: "Security Rules siap-deploy"
+        generated_from: "firestore_rules_summary.yaml"

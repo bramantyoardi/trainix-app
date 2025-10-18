@@ -1,107 +1,220 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper functions for role checking
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-    
-    function getUserId() {
-      return request.auth.uid;
-    }
-    
-    function isApprovedCoach(teamId) {
-      return exists(/databases/$(database)/documents/teams/$(teamId)/members/$(getUserId())) &&
-             get(/databases/$(database)/documents/teams/$(teamId)/members/$(getUserId())).data.role == "Coach" &&
-             get(/databases/$(database)/documents/teams/$(teamId)/members/$(getUserId())).data.status == "approved";
-    }
-    
-    function isTeamOwner(teamId) {
-      return exists(/databases/$(database)/documents/teams/$(teamId)/members/$(getUserId())) &&
-             get(/databases/$(database)/documents/teams/$(teamId)/members/$(getUserId())).data.isOwner == true &&
-             get(/databases/$(database)/documents/teams/$(teamId)/members/$(getUserId())).data.status == "approved";
-    }
-    
-    function isApprovedTeamMember(teamId) {
-      return exists(/databases/$(database)/documents/teams/$(teamId)/members/$(getUserId())) &&
-             get(/databases/$(database)/documents/teams/$(teamId)/members/$(getUserId())).data.status == "approved";
-    }
-    
-    function isCoachOrOwner(teamId) {
-      return isApprovedCoach(teamId) || isTeamOwner(teamId);
+
+    // ─────────────────────────────
+    // 🔧 Helper Functions
+    // ─────────────────────────────
+
+    // Get member document reference
+    function _memberDoc(teamId, userId) {
+      return get(/databases/$(database)/documents/teams/$(teamId)/members/$(userId));
     }
 
-    // Users collection - users can read/write their own profile
+    // Check if a user is member of team and approved
+    function isMember(teamId, userId) {
+      return exists(/databases/$(database)/documents/teams/$(teamId)/members/$(userId))
+        && _memberDoc(teamId, userId).data.status == 'approved';
+    }
+
+    // Return role in team
+    function roleInTeam(teamId, userId) {
+      return exists(/databases/$(database)/documents/teams/$(teamId)/members/$(userId))
+        ? _memberDoc(teamId, userId).data.role
+        : 'None';
+    }
+
+    // Check if user is coach (role=Coach, approved)
+    function isCoach(teamId, userId) {
+      return exists(/databases/$(database)/documents/teams/$(teamId)/members/$(userId))
+        && _memberDoc(teamId, userId).data.status == 'approved'
+        && _memberDoc(teamId, userId).data.role == 'Coach';
+    }
+
+    // Check if user is owner (flag-based)
+    function isOwner(teamId, userId) {
+      return exists(/databases/$(database)/documents/teams/$(teamId)/members/$(userId))
+        && _memberDoc(teamId, userId).data.is_owner == true;
+    }
+
+    // Helper to read teamId (accept both snake_case & camelCase)
+    function extractTeamId(data) {
+      return data.team_id != null ? data.team_id : data.teamId;
+    }
+
+    // ─────────────────────────────
+    // 📝 Audit Fields Helpers (dual casing)
+    // ─────────────────────────────
+    function createdBy(data) {
+      return data.created_by != null ? data.created_by : data.createdBy;
+    }
+    function updatedBy(data) {
+      return data.updated_by != null ? data.updated_by : data.updatedBy;
+    }
+    function createdAt(data) {
+      return data.created_at != null ? data.created_at : data.createdAt;
+    }
+    function updatedAt(data) {
+      return data.updated_at != null ? data.updated_at : data.updatedAt;
+    }
+
+    function hasAuditCreate(data) {
+      return createdAt(data) is timestamp
+        && createdBy(data) is string
+        && updatedAt(data) is timestamp
+        && updatedBy(data) is string
+        && updatedAt(data) == createdAt(data)
+        && updatedBy(data) == createdBy(data)
+        && createdBy(data) == request.auth.uid;
+    }
+
+    function hasAuditUpdate(data) {
+      return updatedAt(data) is timestamp
+        && updatedBy(data) is string
+        && updatedBy(data) == request.auth.uid;
+    }
+
+    // ─────────────────────────────
+    // 👤 USERS (private profile)
+    // ─────────────────────────────
     match /users/{userId} {
-      allow read, write: if isAuthenticated() && getUserId() == userId;
+      allow create: if request.auth != null && hasAuditCreate(request.resource.data);
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null && request.auth.uid == userId && hasAuditUpdate(request.resource.data);
+      allow delete: if false; // delete denied
     }
 
-    // Teams collection
-    match /teams/{teamId} {
-      // Anyone authenticated can read team info (for joining)
-      allow read: if isAuthenticated();
-      // Only authenticated users can create teams
-      allow create: if isAuthenticated();
-      // Only team owner can update/delete team
-      allow update, delete: if isAuthenticated() && isTeamOwner(teamId);
-      
-      // Team members subcollection
-      match /members/{memberId} {
-        // Team members can read all members
-        allow read: if isAuthenticated() && isApprovedTeamMember(teamId);
-        // Only approved coaches or team owners can write to members
-        allow write: if isAuthenticated() && isCoachOrOwner(teamId);
-        // Users can create their own membership (for joining)
-        allow create: if isAuthenticated() && getUserId() == memberId;
-      }
-      
-      // Programs subcollection - only coaches can write
-      match /programs/{programId} {
-        // Team members can read programs
-        allow read: if isAuthenticated() && isApprovedTeamMember(teamId);
-        // Only approved coaches can write programs
-        allow write: if isAuthenticated() && isApprovedCoach(teamId);
-      }
-      
-      // Training logs subcollection - only coaches can write
-      match /trainingLogs/{logId} {
-        // Team members can read training logs
-        allow read: if isAuthenticated() && isApprovedTeamMember(teamId);
-        // Only approved coaches can write training logs
-        allow write: if isAuthenticated() && isApprovedCoach(teamId);
-      }
-      
-      // Reminders subcollection
-      match /reminders/{reminderId} {
-        // Team members can read reminders
-        allow read: if isAuthenticated() && isApprovedTeamMember(teamId);
-        // Only approved coaches can write reminders
-        allow write: if isAuthenticated() && isApprovedCoach(teamId);
-      }
-    }
-
-    // Leaderboards collection
-    match /leaderboards/{leaderboardId} {
-      // Only team members can read leaderboards
-      allow read: if isAuthenticated() && 
-                     exists(/databases/$(database)/documents/teams/$(resource.data.team_id)/members/$(getUserId())) &&
-                     get(/databases/$(database)/documents/teams/$(resource.data.team_id)/members/$(getUserId())).data.status == "approved";
-      // Only approved coaches can write leaderboards
-      allow write: if isAuthenticated() && 
-                      exists(/databases/$(database)/documents/teams/$(resource.data.team_id)/members/$(getUserId())) &&
-                      get(/databases/$(database)/documents/teams/$(resource.data.team_id)/members/$(getUserId())).data.role == "Coach" &&
-                      get(/databases/$(database)/documents/teams/$(resource.data.team_id)/members/$(getUserId())).data.status == "approved";
-    }
-
-    // Security logs - only system can write, users can read their own
+    // ─────────────────────────────
+    // 🧾 SECURITY LOGS (immutable)
+    // ─────────────────────────────
     match /security_logs/{logId} {
-      allow read: if isAuthenticated() && getUserId() == resource.data.userId;
-      allow write: if false; // Only server-side functions should write security logs
+      allow create: if request.auth != null
+        && (request.resource.data.userId == request.auth.uid || request.resource.data.user_id == request.auth.uid)
+        && hasAuditCreate(request.resource.data);
+      allow read: if request.auth != null && (resource.data.userId == request.auth.uid || resource.data.user_id == request.auth.uid);
+      allow update, delete: if false;
     }
 
-    // Deny all other access
-    match /{document=**} {
-      allow read, write: if false;
+    // ─────────────────────────────
+    // 🔔 NOTIFICATIONS (per user)
+    // ─────────────────────────────
+    match /notifications/{notificationId} {
+      allow read: if request.auth != null && (resource.data.userId == request.auth.uid || resource.data.user_id == request.auth.uid);
+      allow create: if request.auth != null && (request.resource.data.userId == request.auth.uid || request.resource.data.user_id == request.auth.uid)
+        && hasAuditCreate(request.resource.data);
+      allow update: if request.auth != null && (resource.data.userId == request.auth.uid || resource.data.user_id == request.auth.uid)
+        && hasAuditUpdate(request.resource.data);
+      allow delete: if request.auth != null && (resource.data.userId == request.auth.uid || resource.data.user_id == request.auth.uid);
+    }
+
+    // ─────────────────────────────
+    // 🔔 TEAM NOTIFICATIONS
+    // ─────────────────────────────
+    match /team_notifications/{notificationId} {
+      allow read: if request.auth != null && (
+        let teamId = extractTeamId(resource.data);
+        teamId != null && isMember(teamId, request.auth.uid)
+      );
+      allow create: if request.auth != null && (
+        let teamId = extractTeamId(request.resource.data);
+        teamId != null && (isCoach(teamId, request.auth.uid) || isOwner(teamId, request.auth.uid))
+        && hasAuditCreate(request.resource.data)
+      );
+      allow update: if request.auth != null && (
+        let teamId = extractTeamId(request.resource.data);
+        teamId != null && (isCoach(teamId, request.auth.uid) || isOwner(teamId, request.auth.uid))
+        && hasAuditUpdate(request.resource.data)
+      );
+      allow delete: if request.auth != null && (
+        let teamId = extractTeamId(resource.data);
+        teamId != null && (isCoach(teamId, request.auth.uid) || isOwner(teamId, request.auth.uid))
+      );
+    }
+
+    // ─────────────────────────────
+    // ❤️ TRAINING INTENSITIES (global)
+    // ─────────────────────────────
+    match /training_intensities/{intensityId} {
+      allow read: if request.auth != null && (
+        (extractTeamId(resource.data) != null && isMember(extractTeamId(resource.data), request.auth.uid))
+        || (resource.data.athleteId == request.auth.uid || resource.data.athlete_id == request.auth.uid)
+      );
+      allow create: if request.auth != null && (
+        (extractTeamId(request.resource.data) != null && isCoach(extractTeamId(request.resource.data), request.auth.uid))
+        || (request.resource.data.athleteId == request.auth.uid || request.resource.data.athlete_id == request.auth.uid)
+      ) && hasAuditCreate(request.resource.data);
+      allow update: if request.auth != null && (
+        (extractTeamId(resource.data) != null && isCoach(extractTeamId(resource.data), request.auth.uid))
+        || (resource.data.athleteId == request.auth.uid || resource.data.athlete_id == request.auth.uid)
+      ) && hasAuditUpdate(request.resource.data);
+      allow delete: if request.auth != null && (
+        (extractTeamId(resource.data) != null && isCoach(extractTeamId(resource.data), request.auth.uid))
+        || (resource.data.athleteId == request.auth.uid || resource.data.athlete_id == request.auth.uid)
+      );
+    }
+
+    // ─────────────────────────────
+    // 🧩 TEAMS + SUBCOLLECTIONS
+    // ─────────────────────────────
+    match /teams/{teamId} {
+
+      // TEAM document itself
+      allow create: if request.auth != null && hasAuditCreate(request.resource.data);
+      allow read: if request.auth != null && isMember(teamId, request.auth.uid);
+      allow update: if request.auth != null && (isCoach(teamId, request.auth.uid) || isOwner(teamId, request.auth.uid)) && hasAuditUpdate(request.resource.data);
+      allow delete: if request.auth != null && isOwner(teamId, request.auth.uid);
+
+      // ───────────── MEMBERS ─────────────
+      match /members/{memberId} {
+        allow read: if request.auth != null && isMember(teamId, request.auth.uid);
+        allow create: if request.auth != null && isCoach(teamId, request.auth.uid) && hasAuditCreate(request.resource.data);
+        allow update: if request.auth != null && isCoach(teamId, request.auth.uid) && hasAuditUpdate(request.resource.data)
+          && !(isOwner(teamId, memberId) && !isOwner(teamId, request.auth.uid)); // prevent demote Owner by non-Owner
+        allow delete: if request.auth != null && (
+          isOwner(teamId, request.auth.uid) || memberId == request.auth.uid
+        );
+      }
+
+      // ───────────── PROGRAMS ─────────────
+      match /programs/{programId} {
+        allow read: if request.auth != null && isMember(teamId, request.auth.uid);
+        allow create: if request.auth != null && (isCoach(teamId, request.auth.uid) || isOwner(teamId, request.auth.uid)) && hasAuditCreate(request.resource.data);
+        allow update: if request.auth != null && (isCoach(teamId, request.auth.uid) || isOwner(teamId, request.auth.uid)) && hasAuditUpdate(request.resource.data);
+        allow delete: if request.auth != null && (isCoach(teamId, request.auth.uid) || isOwner(teamId, request.auth.uid));
+      }
+
+      // ───────────── TRAINING LOGS ─────────────
+      match /training_logs/{logId} {
+        allow read: if request.auth != null && isMember(teamId, request.auth.uid) && (
+          isCoach(teamId, request.auth.uid) ||
+          resource.data.athlete_id == request.auth.uid ||
+          resource.data.athleteId == request.auth.uid
+        );
+        allow create: if request.auth != null && (isCoach(teamId, request.auth.uid) || isOwner(teamId, request.auth.uid)) && hasAuditCreate(request.resource.data);
+        allow update: if request.auth != null && (isCoach(teamId, request.auth.uid) || isOwner(teamId, request.auth.uid)) && hasAuditUpdate(request.resource.data);
+        allow delete: if request.auth != null && (isCoach(teamId, request.auth.uid) || isOwner(teamId, request.auth.uid));
+      }
+
+      // ───────────── REMINDERS ─────────────
+      match /reminders/{reminderId} {
+        allow read: if request.auth != null && isMember(teamId, request.auth.uid);
+        allow create: if request.auth != null && (
+          isCoach(teamId, request.auth.uid) ||
+          (request.resource.data.athlete_id == request.auth.uid || request.resource.data.athleteId == request.auth.uid)
+        ) && hasAuditCreate(request.resource.data);
+        allow update: if request.auth != null && (
+          isCoach(teamId, request.auth.uid) ||
+          (resource.data.athlete_id == request.auth.uid || resource.data.athleteId == request.auth.uid)
+        ) && hasAuditUpdate(request.resource.data);
+        allow delete: if request.auth != null && (createdBy(resource.data) == request.auth.uid);
+      }
+
+      // ───────────── LEADERBOARDS ─────────────
+      match /leaderboards/{leaderboardId} {
+        allow read: if request.auth != null && isMember(teamId, request.auth.uid);
+        // Manual writes are denied; updates are managed by Cloud Functions/Admin SDK
+        allow create, update, delete: if false;
+      }
     }
   }
 }
